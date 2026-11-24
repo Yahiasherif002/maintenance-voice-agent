@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maintenance Voice Agent</title>
+<style>
+  :root { --bg: #f6f7f9; --panel: #fff; --text: #16202c; --muted: #5b6878; --accent: #0b6bcb; --line: #dde3ea; --warn: #b45309; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1419; --panel: #182029; --text: #e6edf3; --muted: #9aa7b4; --accent: #4ea1f5; --line: #2a3542; --warn: #f0a24b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 140px; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  p.hint { color: var(--muted); margin: 0 0 20px; }
+  .turn { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .you { color: var(--muted); }
+  .you::before { content: "You: "; font-weight: 600; }
+  .agent::before { content: "Agent: "; font-weight: 600; }
+  .sources { color: var(--muted); font-size: .85rem; margin-top: 6px; }
+  .approval { border-color: var(--warn); }
+  .approval button { margin: 8px 8px 0 0; }
+  footer { position: fixed; inset: auto 0 0 0; background: var(--panel); border-top: 1px solid var(--line); padding: 12px 16px; }
+  footer div { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; }
+  button, input { font: inherit; border-radius: 8px; border: 1px solid var(--line); padding: 10px 14px; background: var(--panel); color: var(--text); }
+  input { flex: 1; min-width: 0; }
+  #talk { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; touch-action: none; }
+  #talk.live { outline: 3px solid var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Maintenance Voice Agent</h1>
+  <p class="hint">Hold the button (or the space bar) and ask about the HX-200 pump, TR-500 transformer, or AC-75 compressor.
+    Ask it to log a work order and confirm by voice.</p>
+  <section id="log" aria-live="polite"></section>
+</main>
+<footer>
+  <div>
+    <button id="talk" type="button">Hold to talk</button>
+    <form id="typed" style="display:flex;flex:1;gap:8px">
+      <input id="text" placeholder="Or type a question" maxlength="2000" aria-label="Question">
+      <button>Send</button>
+    </form>
+    <button id="reset" type="button" title="Start a new conversation">New</button>
+  </div>
+</footer>
+<script>
+const log = document.getElementById("log");
+const talk = document.getElementById("talk");
+let threadId = crypto.randomUUID(), ws, mic, recorder, chunks = [], current;
+let ctx, playHead = 0, leftover = null;
+const playing = new Set();
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/threads/${threadId}/voice`);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = (event) => event.data instanceof ArrayBuffer ? play(event.data) : handle(JSON.parse(event.data));
+}
+
+function el(tag, cls, text = "") {
+  const node = document.createElement(tag);
+  node.className = cls;
+  node.textContent = text;
+  return node;
+}
+
+function newTurn(question = "") {
+  log.querySelectorAll(".approval").forEach((card) => card.remove());
+  const box = el("div", "turn");
+  current = { you: el("div", "you", question), agent: el("div", "agent"), box };
+  box.append(current.you, current.agent);
+  log.append(box);
+  box.scrollIntoView({ block: "end" });
+}
+
+function finish(result) {
+  if (result.answer && !current.agent.textContent) current.agent.textContent = result.answer;
+  if (result.sources?.length) {
+    current.box.append(el("div", "sources", "Sources: " + result.sources.map((s) => `${s.source} p. ${s.page}`).join(", ")));
+  }
+  if (result.pending_approval) askApproval(result.pending_approval);
+}
+
+function askApproval(request) {
+  const box = el("div", "turn approval", `Approve ${request.priority} work order for ${request.equipment_tag}: ${request.summary}`);
+  const yes = el("button", "", "Approve"), no = el("button", "", "Cancel");
+  const decide = async (approved) => {
+    box.remove();
+    newTurn(approved ? "Approve" : "Cancel");
+    finish(await post(`/threads/${threadId}/approval`, { approved }));
+  };
+  yes.onclick = () => decide(true);
+  no.onclick = () => decide(false);
+  box.append(document.createElement("br"), yes, no);
+  log.append(box);
+}
+
+function handle(msg) {
+  if (msg.type === "transcript.delta") current.you.textContent += msg.text;
+  else if (msg.type === "answer.delta") current.agent.textContent += msg.text;
+  else if (msg.type === "turn.done") finish(msg);
+  else if (msg.type === "error") current.agent.textContent = msg.message;
+}
+
+async function post(url, body) {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await response.json();
+  return response.ok ? data : { answer: data.detail ?? "Request failed" };
+}
+
+function play(buffer) {
+  let bytes = new Uint8Array(buffer);
+  if (leftover) { bytes = new Uint8Array([...leftover, ...bytes]); leftover = null; }
+  if (bytes.length % 2) { leftover = bytes.slice(-1); bytes = bytes.slice(0, -1); }
+  const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2);
+  const audio = ctx.createBuffer(1, pcm.length, 24000);
+  const channel = audio.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+  const source = ctx.createBufferSource();
+  source.buffer = audio;
+  source.connect(ctx.destination);
+  playHead = Math.max(playHead, ctx.currentTime + 0.05);
+  source.start(playHead);
+  playHead += audio.duration;
+  playing.add(source);
+  source.onended = () => playing.delete(source);
+}
+
+function stopSpeaking() {
+  playing.forEach((source) => source.stop());
+  playing.clear();
+  playHead = 0;
+  leftover = null;
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "stop" }));
+}
+
+async function startTalking() {
+  if (recorder?.state === "recording") return;
+  ctx ??= new AudioContext({ sampleRate: 24000 });
+  await ctx.resume();
+  stopSpeaking();
+  mic ??= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  recorder = new MediaRecorder(mic);
+  chunks = [];
+  recorder.ondataavailable = (event) => chunks.push(event.data);
+  recorder.onstop = async () => {
+    talk.classList.remove("live");
+    const blob = new Blob(chunks, { type: recorder.mimeType });
+    if (!blob.size) return;
+    newTurn();
+    ws.send(await blob.arrayBuffer());
+  };
+  recorder.start();
+  talk.classList.add("live");
+}
+
+function stopTalking() {
+  if (recorder?.state === "recording") recorder.stop();
+}
+
+talk.addEventListener("pointerdown", startTalking);
+talk.addEventListener("pointerup", stopTalking);
+talk.addEventListener("pointerleave", stopTalking);
+document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT" && !e.repeat) { e.preventDefault(); startTalking(); } });
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT") stopTalking(); });
+
+document.getElementById("typed").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("text");
+  const question = input.value.trim();
+  if (!question) return;
+  input.value = "";
+  newTurn(question);
+  finish(await post(`/threads/${threadId}/messages`, { text: question }));
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  ws.close();
+  threadId = crypto.randomUUID();
+  log.replaceChildren();
+  connect();
+});
+
+connect();
+</script>
+</body>
+</html>
