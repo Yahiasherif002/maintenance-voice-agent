@@ -1,0 +1,20 @@
+{"question": "What is the rated flow and head of the HX-200 pump?", "source": "hx200_pump_manual.pdf", "page": 1}
+{"question": "What is the maximum working pressure of the HX-200?", "source": "hx200_pump_manual.pdf", "page": 1}
+{"question": "How much parallel misalignment is allowed when aligning the HX-200 shaft?", "source": "hx200_pump_manual.pdf", "page": 2}
+{"question": "How heavy does the foundation under an HX-200 pump need to be?", "source": "hx200_pump_manual.pdf", "page": 2}
+{"question": "What is the minimum continuous flow for the HX-200?", "source": "hx200_pump_manual.pdf", "page": 3}
+{"question": "At what bearing temperature does the HX-200 trip?", "source": "hx200_pump_manual.pdf", "page": 3}
+{"question": "How often should the HX-200 pump be serviced?", "source": "hx200_pump_manual.pdf", "page": 4}
+{"question": "What torque do I use for the HX-200 impeller nut?", "source": "hx200_pump_manual.pdf", "page": 4}
+{"question": "What is the vector group of the TR-500 transformer?", "source": "tr500_transformer_spec.pdf", "page": 1}
+{"question": "What insulation class does the TR-500 use?", "source": "tr500_transformer_spec.pdf", "page": 1}
+{"question": "How much clearance does the TR-500 need from the walls?", "source": "tr500_transformer_spec.pdf", "page": 2}
+{"question": "How should the TR-500 rating be reduced at high altitude?", "source": "tr500_transformer_spec.pdf", "page": 2}
+{"question": "At what winding temperature does the TR-500 trip?", "source": "tr500_transformer_spec.pdf", "page": 3}
+{"question": "When do the TR-500 cooling fans start and stop?", "source": "tr500_transformer_spec.pdf", "page": 3}
+{"question": "What is the minimum insulation resistance for the TR-500 high-voltage winding?", "source": "tr500_transformer_spec.pdf", "page": 4}
+{"question": "What torque is used on the TR-500 low-voltage busbar bolts?", "source": "tr500_transformer_spec.pdf", "page": 4}
+{"question": "What is the free air delivery of the AC-75 compressor?", "source": "ac75_compressor_manual.pdf", "page": 1}
+{"question": "How much cooling airflow does the AC-75 compressor room need?", "source": "ac75_compressor_manual.pdf", "page": 2}
+{"question": "At what discharge temperature does the AC-75 shut down?", "source": "ac75_compressor_manual.pdf", "page": 3}
+{"question": "How often should the AC-75 air filter be replaced?", "source": "ac75_compressor_manual.pdf", "page": 4}
